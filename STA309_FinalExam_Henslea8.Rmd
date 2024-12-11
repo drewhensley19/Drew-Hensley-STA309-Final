@@ -1,0 +1,161 @@
+---
+title: "Final Exam"
+author: "Drew Hensley"
+date: "2024-12-10"
+output: html_document
+---
+
+# Data Input
+```{r, include=FALSE}
+# Load packages and data
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+set.seed(123)
+diabetes_data <- read.csv("diabetes_data.csv")
+# View the structure of the data
+str(diabetes_data)
+```
+
+
+```{r}
+# Convert categorical variables to factors
+diabetes_data$gender <- as.factor(diabetes_data$gender)
+diabetes_data$hypertension <- as.factor(diabetes_data$hypertension)
+diabetes_data$heart_disease <- as.factor(diabetes_data$heart_disease)
+diabetes_data$smoking_history <- as.factor(diabetes_data$smoking_history)
+diabetes_data$diabetes <- as.factor(diabetes_data$diabetes)
+# Check for missing values
+sum(is.na(diabetes_data))
+```
+
+# Data Partitioning and Cross-Validation
+
+# Data Partitioning
+```{r}
+set.seed(501)
+train_index <- createDataPartition(diabetes_data$diabetes, p = 0.8, list = FALSE)
+train_data <- diabetes_data[train_index, ]
+test_data <- diabetes_data[-train_index, ]
+
+# Cross-validation setup
+control <- trainControl(method = "repeatedcv", number = 5, repeats = 10)
+```
+
+# Model Building
+
+```{r}
+set.seed(501)
+log_model <- train(diabetes ~ ., data = train_data, method = "glm", family = "binomial", trControl = control)
+```
+
+
+```{r}
+# Model 2: Random Forest
+set.seed(501)
+rf_model <- train(diabetes ~ ., data = train_data, method = "rf", trControl = control)
+```
+
+```{r}
+# Model 3: Logistic Regression with a Subset of Predictors
+set.seed(501)
+log_model_subset <- train(diabetes ~ age + bmi + gender + hypertension, data = train_data, method = "glm", family = "binomial", trControl = control)
+
+```
+
+```{r}
+# Step 4: Variable Importance
+rf_importance <- varImp(rf_model)
+print(rf_importance)
+```
+
+# This tells us that Hbalc_level, blood glucose level, and age are the top 3 variables that contribute to predicting diabetes. Very important as different predictors appear more significant than others. All can contribute to getting diabetes.
+
+```{r}
+# Step 5: Model Evaluation
+# Predict on the test set
+log_pred <- predict(log_model, newdata = test_data)
+rf_pred <- predict(rf_model, newdata = test_data)
+log_subset_pred <- predict(log_model_subset, newdata = test_data)
+```
+
+```{r}
+# Confusion Matrices
+log_cm <- confusionMatrix(log_pred, test_data$diabetes)
+rf_cm <- confusionMatrix(rf_pred, test_data$diabetes)
+log_subset_cm <- confusionMatrix(log_subset_pred, test_data$diabetes)
+```
+
+```{r}
+# Display Accuracy
+log_cm$overall["Accuracy"]
+rf_cm$overall["Accuracy"]
+log_subset_cm$overall["Accuracy"]
+```
+
+```{r}
+# Step 6: Visualization
+# Create a data frame for model comparison
+comparison <- data.frame(
+  Model = c("Logistic Regression", "Random Forest", "Logistic Subset"),
+  Accuracy = c(log_cm$overall["Accuracy"], rf_cm$overall["Accuracy"], log_subset_cm$overall["Accuracy"])
+)
+
+# Bar chart of accuracy
+comparison_plot <- ggplot(comparison, aes(x = Model, y = Accuracy)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Model Accuracy Comparison", x = "Model", y = "Accuracy") +
+  theme_minimal()
+comparison_plot
+```
+
+```{r}
+ggsave("comparison_plot.png")
+```
+
+
+# Based on our results, our logistic regression model displayed the most accurate results within our comparison. I do not see any problems with the way I decided to show my data because all three models gave posiitve results. Another metric I could have used to compare this data was to perform an analysis to calculate AUC values from our 3 models. This would help give us a balanced view of our data of what is accurate and inaccurate.
+
+
+# Part 3
+# I created a dashboard showing all predictors from our dataset to show the importance of each individual predictor. Going from most important to least important, I created a bar plot showing these predictors in an organized fashion.
+# Bar Plot showing all predictors from our dataset
+```{r}
+# Bar Plot for Variable Importance
+var_importance <- data.frame(
+  Variable = rownames(varImp(rf_model)$importance),
+  Importance = varImp(rf_model)$importance[,1]
+)
+
+var_importance <- ggplot(var_importance, aes(x = reorder(Variable, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Variable Importance in Diabetes Prediction", x = "Variables", y = "Importance Score") +
+  theme_minimal()
+var_importance
+```
+
+```{r}
+ggsave("var_importance.png")
+```
+
+
+# Scatterplot showing the variable bmi and its probability when predicting diabetes
+```{r}
+# Scatter Plot of BMI vs Diabetes Probability
+test_data$rf_probs <- predict(rf_model, newdata = test_data, type = "prob")[,2]
+
+test_data <- ggplot(test_data, aes(x = bmi, y = rf_probs)) +
+  geom_point(alpha = 0.6, color = "darkblue") +
+  geom_smooth(method = "loess", color = "red") +
+  labs(title = "BMI and Predicted Probability of Diabetes", x = "BMI", y = "Predicted Probability") +
+  theme_minimal()
+test_data
+```
+
+```{r}
+ggsave("test_data.png")
+```
+
